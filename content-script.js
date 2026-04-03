@@ -1,11 +1,17 @@
 const ROOT_ID = "apple-game-indicator-root";
 const PANEL_ID = "apple-game-indicator-panel";
 const BRIDGE_EVENT = "apple-game-indicator:update";
+const DIGIT_LAYOUT = [
+  [1, 9],
+  [2, 8],
+  [3, 7],
+  [4, 6],
+  [5]
+];
 
 let rootElement = null;
 let statusElement = null;
 let totalElement = null;
-let remainingElement = null;
 const countElements = new Map();
 let lastRenderKey = "";
 
@@ -16,30 +22,32 @@ function ensureOverlay() {
 
   rootElement = document.createElement("div");
   rootElement.id = ROOT_ID;
+  rootElement.style.setProperty("--pattern-url", `url("${chrome.runtime.getURL("assets/pattern.png")}")`);
   rootElement.innerHTML = `
     <section id="${PANEL_ID}" aria-live="polite">
-      <h1 class="apple-game-indicator-title">Apple Game Indicator</h1>
-      <p class="apple-game-indicator-status">게임 시작 대기 중...</p>
+      <h1 class="apple-game-indicator-title">Apple Counter</h1>
+      <p class="apple-game-indicator-status">Get ready</p>
       <div class="apple-game-indicator-summary">
         <div class="apple-game-indicator-card">
-          <span class="apple-game-indicator-label">합계</span>
+          <span class="apple-game-indicator-label">Total</span>
           <strong class="apple-game-indicator-value" data-role="total">-</strong>
-        </div>
-        <div class="apple-game-indicator-card">
-          <span class="apple-game-indicator-label">남은 사과 수</span>
-          <strong class="apple-game-indicator-value" data-role="remaining">-</strong>
         </div>
       </div>
       <div class="apple-game-indicator-grid">
-        ${Array.from({ length: 9 }, (_, index) => {
-          const digit = index + 1;
-          return `
-            <div class="apple-game-indicator-cell">
-              ${digit}
-              <strong data-role="count-${digit}">-</strong>
-            </div>
-          `;
-        }).join("")}
+        ${DIGIT_LAYOUT.map((row) => `
+          <div class="apple-game-indicator-row apple-game-indicator-row-${row.length}">
+            ${row.map((digit) => `
+              <div class="apple-game-indicator-cell">
+                <img
+                  class="apple-game-indicator-fruit"
+                  src="${chrome.runtime.getURL(`assets/apple-cuts/apple-${digit}.png`)}"
+                  alt=""
+                />
+                <strong data-role="count-${digit}">-</strong>
+              </div>
+            `).join("")}
+          </div>
+        `).join("")}
       </div>
     </section>
   `;
@@ -47,7 +55,6 @@ function ensureOverlay() {
   document.documentElement.appendChild(rootElement);
   statusElement = rootElement.querySelector(".apple-game-indicator-status");
   totalElement = rootElement.querySelector('[data-role="total"]');
-  remainingElement = rootElement.querySelector('[data-role="remaining"]');
 
   for (let digit = 1; digit <= 9; digit += 1) {
     countElements.set(digit, rootElement.querySelector(`[data-role="count-${digit}"]`));
@@ -58,7 +65,7 @@ function renderIndicator(payload) {
   ensureOverlay();
 
   const state = payload?.state ?? null;
-  const status = payload?.status ?? "게임 시작 대기 중...";
+  const status = payload?.status ?? "Get ready";
   const renderKey = JSON.stringify({ status, state });
   if (renderKey === lastRenderKey) {
     return;
@@ -69,7 +76,6 @@ function renderIndicator(payload) {
 
   if (!state) {
     totalElement.textContent = "-";
-    remainingElement.textContent = "-";
     for (let digit = 1; digit <= 9; digit += 1) {
       countElements.get(digit).textContent = "-";
     }
@@ -77,7 +83,6 @@ function renderIndicator(payload) {
   }
 
   totalElement.textContent = String(state.total);
-  remainingElement.textContent = String(state.remaining);
 
   for (let digit = 1; digit <= 9; digit += 1) {
     countElements.get(digit).textContent = String(state.counts[digit] ?? 0);
@@ -99,7 +104,7 @@ function injectBridgeScript() {
 
 function startBoardWatcher() {
   ensureOverlay();
-  renderIndicator({ status: "읽는 중..." });
+  renderIndicator({ status: "Loading" });
 
   window.addEventListener(BRIDGE_EVENT, (event) => {
     renderIndicator(event.detail);

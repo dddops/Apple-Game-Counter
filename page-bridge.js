@@ -2,9 +2,13 @@
   const BRIDGE_EVENT = "apple-game-indicator:update";
   const POLL_MS = 250;
   const INITIAL_WAIT_MS = 15000;
+  const COMMIT_SETTLE_MS = 30;
 
   let lastPayloadKey = "";
   let initialScanStartedAt = Date.now();
+  let interactionDepth = 0;
+  let holdUntil = 0;
+  let pendingPayload = null;
 
   function log(...args) {
     console.debug("[apple-game-indicator]", ...args);
@@ -35,6 +39,35 @@
     window.postMessage({ source: BRIDGE_EVENT, payload }, "*");
   }
 
+  function beginInteraction() {
+    interactionDepth += 1;
+  }
+
+  function endInteraction() {
+    interactionDepth = Math.max(0, interactionDepth - 1);
+    if (interactionDepth === 0) {
+      holdUntil = Date.now() + COMMIT_SETTLE_MS;
+    }
+  }
+
+  function shouldHoldEmission() {
+    if (interactionDepth > 0) {
+      return true;
+    }
+
+    return Date.now() < holdUntil;
+  }
+
+  function flushPendingPayload() {
+    if (!pendingPayload || shouldHoldEmission()) {
+      return;
+    }
+
+    const payload = pendingPayload;
+    pendingPayload = null;
+    emit(payload);
+  }
+
   function isVisibleDisplayObject(node) {
     let current = node;
     let guard = 0;
@@ -58,6 +91,96 @@
 
     const value = Number(node.text.trim());
     return Number.isInteger(value) && value >= 1 && value <= 9;
+  }
+
+  function parseDigit(value) {
+    if (typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 9) {
+      return value;
+    }
+
+    if (typeof value !== "string") {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    const direct = Number(trimmed);
+    if (Number.isInteger(direct) && direct >= 1 && direct <= 9) {
+      return direct;
+    }
+
+    const match = trimmed.match(/[1-9]/);
+    return match ? Number(match[0]) : null;
+  }
+
+  function findNodeByName(root, targetName, maxVisits) {
+    if (!root) {
+      return null;
+    }
+
+    const stack = [root];
+    let visits = 0;
+
+    while (stack.length && visits < maxVisits) {
+      visits += 1;
+      const current = stack.pop();
+      if (!current) {
+        continue;
+      }
+
+      if (current.name === targetName) {
+        return current;
+      }
+
+      const children = Array.isArray(current.children) ? current.children : [];
+      for (const child of children) {
+        stack.push(child);
+      }
+    }
+
+    return null;
+  }
+
+  function readMovieClipBoardCandidates() {
+    const root = window.exportRoot || window.stage || null;
+    const mg = findNodeByName(root, "mg", 5000);
+    const cells = Array.isArray(mg?.children) ? mg.children : [];
+
+    const values = [];
+
+    for (const cell of cells) {
+      if (!cell || cell.visible === false) {
+        continue;
+      }
+
+      const wrappers = Array.isArray(cell.children) ? cell.children : [];
+      const mks = wrappers.find((child) => child?.name === "mks");
+      if (!mks) {
+        continue;
+      }
+
+      const layers = Array.isArray(mks.children) ? mks.children : [];
+      const mksa = layers.find((child) => child?.name === "mksa") || null;
+      const mksb = layers.find((child) => child?.name === "mksb") || null;
+      if (!mksa || mksa.visible === false) {
+        continue;
+      }
+      if (mksb && mksb.visible === true) {
+        continue;
+      }
+
+      const mksaChildren = Array.isArray(mksa.children) ? mksa.children : [];
+      const txNu = mksaChildren.find((child) => child?.name === "txNu") || null;
+      if (!txNu || txNu.visible === false) {
+        continue;
+      }
+
+      const digit = parseDigit(txNu.text);
+      if (digit) {
+        values.push(digit);
+      }
+    }
+
+    return values.length ? values : null;
   }
 
   function readStageCandidates() {
@@ -265,6 +388,11 @@
   }
 
   function collectBoardState() {
+    const movieClipValues = readMovieClipBoardCandidates();
+    if (movieClipValues) {
+      return toBoardState(movieClipValues);
+    }
+
     const globalValues = readGlobalBoardCandidates();
     if (globalValues) {
       return toBoardState(globalValues);
@@ -280,14 +408,14 @@
 
   function computeStatus(state) {
     if (state) {
-      return "실시간 분석 중";
+      return "Counting...";
     }
 
     if (!window.createjs && Date.now() - initialScanStartedAt < INITIAL_WAIT_MS) {
-      return "게임 시작 대기 중...";
+      return "Get ready";
     }
 
-    return "분석 실패: 런타임 보드 상태를 찾지 못했습니다";
+    return "Get ready";
   }
 
   function tick() {
@@ -298,12 +426,35 @@
       log("collector failed", error);
     }
 
-    emit({
+    const payload = {
       status: computeStatus(state),
       state
-    });
+    };
+
+    if (shouldHoldEmission()) {
+      pendingPayload = payload;
+      return;
+    }
+
+    pendingPayload = null;
+    emit(payload);
   }
+
+  window.addEventListener("mousedown", beginInteraction, true);
+  window.addEventListener("touchstart", beginInteraction, true);
+  window.addEventListener("pointerdown", beginInteraction, true);
+  window.addEventListener("mouseup", endInteraction, true);
+  window.addEventListener("touchend", endInteraction, true);
+  window.addEventListener("touchcancel", endInteraction, true);
+  window.addEventListener("pointerup", endInteraction, true);
+  window.addEventListener("pointercancel", endInteraction, true);
+  window.addEventListener("blur", () => {
+    interactionDepth = 0;
+    holdUntil = 0;
+    flushPendingPayload();
+  });
 
   tick();
   window.setInterval(tick, POLL_MS);
+  window.setInterval(flushPendingPayload, 50);
 })();

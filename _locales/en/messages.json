@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "Apple Game Counter"
+  },
+  "extDescription": {
+    "message": "Shows the current board sum and digit counts on Apple Game in real time."
+  }
+}
