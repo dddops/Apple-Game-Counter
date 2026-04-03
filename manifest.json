@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Apple Game Live Indicator",
+  "version": "0.1.0",
+  "description": "Shows the current board sum and digit counts on Fruit Box A in real time.",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.gamesaien.com/game/fruit_box_a/*",
+        "https://www.gamesaien.com/game/fruit_box_a/"
+      ],
+      "js": [
+        "content-script.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "page-bridge.js"
+      ],
+      "matches": [
+        "https://www.gamesaien.com/*"
+      ]
+    }
+  ]
+}
