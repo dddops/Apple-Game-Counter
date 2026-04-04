@@ -1,17 +1,16 @@
 (function pageBridge() {
   const BRIDGE_EVENT = "apple-game-indicator:update";
-  const FAST_POLL_MS = 30;
-  const SLOW_POLL_MS = 30;
+  const POLL_MS = 30;
   const INITIAL_WAIT_MS = 15000;
   const COMMIT_SETTLE_MS = 30;
   const RESET_IGNORE_MS = 1500;
+  const CONTROL_HIT_PADDING = 10;
 
   let lastPayloadKey = "";
   let initialScanStartedAt = Date.now();
   let interactionDepth = 0;
   let holdUntil = 0;
   let pendingPayload = null;
-  let hasObservedBoard = false;
   let tickTimer = null;
   let lastObservedStateKey = "";
   let resetIgnoreUntil = 0;
@@ -75,11 +74,7 @@
     emit(payload);
   }
 
-  function getNextPollMs() {
-    return hasObservedBoard ? SLOW_POLL_MS : FAST_POLL_MS;
-  }
-
-  function scheduleNextTick(delay = getNextPollMs()) {
+  function scheduleNextTick(delay = POLL_MS) {
     if (tickTimer) {
       window.clearTimeout(tickTimer);
     }
@@ -150,6 +145,39 @@
       }
 
       if (current.name === targetName) {
+        return current;
+      }
+
+      const children = Array.isArray(current.children) ? current.children : [];
+      for (const child of children) {
+        stack.push(child);
+      }
+    }
+
+    return null;
+  }
+
+  function findVisibleTextNode(root, targetText, maxVisits = 8000) {
+    if (!root) {
+      return null;
+    }
+
+    const stack = [root];
+    const normalizedTarget = targetText.toLowerCase();
+    let visits = 0;
+
+    while (stack.length && visits < maxVisits) {
+      visits += 1;
+      const current = stack.pop();
+      if (!current) {
+        continue;
+      }
+
+      if (
+        typeof current.text === "string" &&
+        current.text.trim().toLowerCase() === normalizedTarget &&
+        isVisibleDisplayObject(current)
+      ) {
         return current;
       }
 
@@ -406,11 +434,16 @@
       return null;
     }
 
-    return { total, counts, remaining };
+    return {
+      total,
+      counts,
+      remaining,
+      fingerprint: values.join(",")
+    };
   }
 
   function getStateKey(state) {
-    return state ? JSON.stringify(state) : "";
+    return state ? state.fingerprint || JSON.stringify(state) : "";
   }
 
   function collectBoardState() {
@@ -456,10 +489,75 @@
     return text.includes("reset");
   }
 
+  function getClientPoint(event) {
+    if (typeof event.clientX === "number" && typeof event.clientY === "number") {
+      return { x: event.clientX, y: event.clientY };
+    }
+
+    const touch = event.changedTouches?.[0] || event.touches?.[0] || null;
+    if (touch) {
+      return { x: touch.clientX, y: touch.clientY };
+    }
+
+    return null;
+  }
+
+  function getDisplayObjectBounds(node) {
+    const candidates = [node?.parent || null, node].filter(Boolean);
+
+    for (const candidate of candidates) {
+      if (typeof candidate.getTransformedBounds === "function") {
+        const bounds = candidate.getTransformedBounds();
+        if (bounds && bounds.width > 0 && bounds.height > 0) {
+          return bounds;
+        }
+      }
+
+      if (typeof candidate.getBounds === "function" && typeof candidate.localToGlobal === "function") {
+        const bounds = candidate.getBounds();
+        if (bounds && bounds.width > 0 && bounds.height > 0) {
+          const topLeft = candidate.localToGlobal(bounds.x, bounds.y);
+          const bottomRight = candidate.localToGlobal(bounds.x + bounds.width, bounds.y + bounds.height);
+          return {
+            x: Math.min(topLeft.x, bottomRight.x),
+            y: Math.min(topLeft.y, bottomRight.y),
+            width: Math.abs(bottomRight.x - topLeft.x),
+            height: Math.abs(bottomRight.y - topLeft.y)
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function isPointInsideBounds(point, bounds, padding = CONTROL_HIT_PADDING) {
+    if (!point || !bounds) {
+      return false;
+    }
+
+    return (
+      point.x >= bounds.x - padding &&
+      point.x <= bounds.x + bounds.width + padding &&
+      point.y >= bounds.y - padding &&
+      point.y <= bounds.y + bounds.height + padding
+    );
+  }
+
+  function getRuntimeRoot() {
+    return window.exportRoot || window.stage || window.gameRoot || window.gameStage || null;
+  }
+
+  function isCanvasControlHit(event, text) {
+    const point = getClientPoint(event);
+    const textNode = findVisibleTextNode(getRuntimeRoot(), text);
+    const bounds = getDisplayObjectBounds(textNode);
+    return isPointInsideBounds(point, bounds);
+  }
+
   function startResetWindow() {
     resetIgnoreUntil = Date.now() + RESET_IGNORE_MS;
     resetBaselineStateKey = lastObservedStateKey;
-    hasObservedBoard = false;
     pendingPayload = null;
     lastPayloadKey = "";
     emit({
@@ -513,7 +611,6 @@
     };
 
     if (state) {
-      hasObservedBoard = true;
       lastObservedStateKey = stateKey;
     }
 
@@ -543,6 +640,16 @@
   });
   window.addEventListener("click", (event) => {
     if (isResetTrigger(event.target)) {
+      startResetWindow();
+    }
+  }, true);
+  window.addEventListener("mouseup", (event) => {
+    if (isCanvasControlHit(event, "Reset")) {
+      startResetWindow();
+    }
+  }, true);
+  window.addEventListener("touchend", (event) => {
+    if (isCanvasControlHit(event, "Reset")) {
       startResetWindow();
     }
   }, true);

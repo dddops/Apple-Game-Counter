@@ -28,9 +28,7 @@
     {
       "resources": [
         "page-bridge.js",
-        "assets/apple-labels.png",
         "assets/apple-cuts/*",
-        "assets/apples-sprite.png",
         "assets/pattern.png",
         "assets/live-pattern.png"
       ],
