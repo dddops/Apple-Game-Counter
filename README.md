@@ -4,17 +4,29 @@
 
 ## Screenshots
 
-### Start Screen
+### Version 0.1.0
+
+#### Start Screen
 
 ![Start screen](docs/screenshots/start-screen.jpg)
 
-### Live Board
+#### Live Board
 
 ![Live board](docs/screenshots/board-live.jpg)
 
-### End Screen
+#### End Screen
 
 ![End screen](docs/screenshots/end-screen.jpg)
+
+### Version 0.2.0
+
+#### Start Screen
+
+![Version 0.2.0 start screen](docs/screenshots/v0.2.0-start.png)
+
+#### Live Board
+
+![Version 0.2.0 live board](docs/screenshots/v0.2.0-live.png)
 
 ## How It Works
 
