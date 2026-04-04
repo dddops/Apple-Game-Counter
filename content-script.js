@@ -14,6 +14,7 @@ let panelElement = null;
 let statusElement = null;
 let totalElement = null;
 const countElements = new Map();
+const compareElements = new Map();
 let lastRenderKey = "";
 
 function ensureOverlay() {
@@ -38,7 +39,7 @@ function ensureOverlay() {
       <div class="apple-game-indicator-grid">
         ${DIGIT_LAYOUT.map((row) => `
           <div class="apple-game-indicator-row apple-game-indicator-row-${row.length}">
-            ${row.map((digit) => `
+            ${row.map((digit, index) => `
               <div class="apple-game-indicator-cell">
                 <img
                   class="apple-game-indicator-fruit"
@@ -47,6 +48,12 @@ function ensureOverlay() {
                 />
                 <strong data-role="count-${digit}">-</strong>
               </div>
+              ${row.length === 2 && index === 0 ? `
+                <div
+                  class="apple-game-indicator-compare apple-game-indicator-compare-equal"
+                  data-role="compare-${row[0]}-${row[1]}"
+                >=</div>
+              ` : ""}
             `).join("")}
           </div>
         `).join("")}
@@ -61,6 +68,15 @@ function ensureOverlay() {
 
   for (let digit = 1; digit <= 9; digit += 1) {
     countElements.set(digit, rootElement.querySelector(`[data-role="count-${digit}"]`));
+  }
+
+  for (const row of DIGIT_LAYOUT) {
+    if (row.length === 2) {
+      compareElements.set(
+        `${row[0]}-${row[1]}`,
+        rootElement.querySelector(`[data-role="compare-${row[0]}-${row[1]}"]`)
+      );
+    }
   }
 }
 
@@ -83,6 +99,10 @@ function renderIndicator(payload) {
     for (let digit = 1; digit <= 9; digit += 1) {
       countElements.get(digit).textContent = "-";
     }
+    for (const element of compareElements.values()) {
+      element.textContent = "=";
+      element.className = "apple-game-indicator-compare apple-game-indicator-compare-equal";
+    }
     return;
   }
 
@@ -90,6 +110,35 @@ function renderIndicator(payload) {
 
   for (let digit = 1; digit <= 9; digit += 1) {
     countElements.get(digit).textContent = String(state.counts[digit] ?? 0);
+  }
+
+  for (const row of DIGIT_LAYOUT) {
+    if (row.length !== 2) {
+      continue;
+    }
+
+    const [leftDigit, rightDigit] = row;
+    const leftCount = state.counts[leftDigit] ?? 0;
+    const rightCount = state.counts[rightDigit] ?? 0;
+    const compareElement = compareElements.get(`${leftDigit}-${rightDigit}`);
+    if (!compareElement) {
+      continue;
+    }
+
+    if (leftCount > rightCount) {
+      compareElement.textContent = ">";
+      compareElement.className = "apple-game-indicator-compare apple-game-indicator-compare-left";
+      continue;
+    }
+
+    if (leftCount < rightCount) {
+      compareElement.textContent = "<";
+      compareElement.className = "apple-game-indicator-compare apple-game-indicator-compare-right";
+      continue;
+    }
+
+    compareElement.textContent = "=";
+    compareElement.className = "apple-game-indicator-compare apple-game-indicator-compare-equal";
   }
 }
 
