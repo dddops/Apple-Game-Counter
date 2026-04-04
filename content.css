@@ -19,6 +19,12 @@
   border: 4.5px solid #61c96f;
   box-shadow: 0 8px 22px rgba(70, 132, 74, 0.16);
   overflow: hidden;
+  transition: background-image 140ms ease, background-size 140ms ease;
+}
+
+#apple-game-indicator-panel.is-live {
+  background-image: var(--live-pattern-url);
+  background-size: 184px auto;
 }
 
 .apple-game-indicator-title {

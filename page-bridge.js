@@ -1,14 +1,21 @@
 (function pageBridge() {
   const BRIDGE_EVENT = "apple-game-indicator:update";
-  const POLL_MS = 250;
+  const FAST_POLL_MS = 30;
+  const SLOW_POLL_MS = 30;
   const INITIAL_WAIT_MS = 15000;
   const COMMIT_SETTLE_MS = 30;
+  const RESET_IGNORE_MS = 1500;
 
   let lastPayloadKey = "";
   let initialScanStartedAt = Date.now();
   let interactionDepth = 0;
   let holdUntil = 0;
   let pendingPayload = null;
+  let hasObservedBoard = false;
+  let tickTimer = null;
+  let lastObservedStateKey = "";
+  let resetIgnoreUntil = 0;
+  let resetBaselineStateKey = "";
 
   function log(...args) {
     console.debug("[apple-game-indicator]", ...args);
@@ -66,6 +73,21 @@
     const payload = pendingPayload;
     pendingPayload = null;
     emit(payload);
+  }
+
+  function getNextPollMs() {
+    return hasObservedBoard ? SLOW_POLL_MS : FAST_POLL_MS;
+  }
+
+  function scheduleNextTick(delay = getNextPollMs()) {
+    if (tickTimer) {
+      window.clearTimeout(tickTimer);
+    }
+
+    tickTimer = window.setTimeout(() => {
+      tickTimer = null;
+      tick();
+    }, delay);
   }
 
   function isVisibleDisplayObject(node) {
@@ -387,6 +409,10 @@
     return { total, counts, remaining };
   }
 
+  function getStateKey(state) {
+    return state ? JSON.stringify(state) : "";
+  }
+
   function collectBoardState() {
     const movieClipValues = readMovieClipBoardCandidates();
     if (movieClipValues) {
@@ -404,6 +430,58 @@
     }
 
     return null;
+  }
+
+  function isResetTrigger(target) {
+    if (!(target instanceof Element)) {
+      return false;
+    }
+
+    const control = target.closest("button, input, a");
+    if (!control) {
+      return false;
+    }
+
+    const text = [
+      control.textContent,
+      control.getAttribute("value"),
+      control.getAttribute("aria-label"),
+      control.getAttribute("title")
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim()
+      .toLowerCase();
+
+    return text.includes("reset");
+  }
+
+  function startResetWindow() {
+    resetIgnoreUntil = Date.now() + RESET_IGNORE_MS;
+    resetBaselineStateKey = lastObservedStateKey;
+    hasObservedBoard = false;
+    pendingPayload = null;
+    lastPayloadKey = "";
+    emit({
+      status: "Get ready",
+      state: null
+    });
+    scheduleNextTick(0);
+  }
+
+  function normalizeStateDuringReset(state) {
+    if (Date.now() >= resetIgnoreUntil) {
+      return state;
+    }
+
+    const stateKey = getStateKey(state);
+    if (!state || !stateKey || stateKey === resetBaselineStateKey) {
+      return null;
+    }
+
+    resetIgnoreUntil = 0;
+    resetBaselineStateKey = "";
+    return state;
   }
 
   function computeStatus(state) {
@@ -426,18 +504,28 @@
       log("collector failed", error);
     }
 
+    state = normalizeStateDuringReset(state);
+    const stateKey = getStateKey(state);
+
     const payload = {
       status: computeStatus(state),
       state
     };
 
+    if (state) {
+      hasObservedBoard = true;
+      lastObservedStateKey = stateKey;
+    }
+
     if (shouldHoldEmission()) {
       pendingPayload = payload;
+      scheduleNextTick();
       return;
     }
 
     pendingPayload = null;
     emit(payload);
+    scheduleNextTick();
   }
 
   window.addEventListener("mousedown", beginInteraction, true);
@@ -453,8 +541,12 @@
     holdUntil = 0;
     flushPendingPayload();
   });
+  window.addEventListener("click", (event) => {
+    if (isResetTrigger(event.target)) {
+      startResetWindow();
+    }
+  }, true);
 
   tick();
-  window.setInterval(tick, POLL_MS);
   window.setInterval(flushPendingPayload, 50);
 })();

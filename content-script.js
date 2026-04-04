@@ -10,6 +10,7 @@ const DIGIT_LAYOUT = [
 ];
 
 let rootElement = null;
+let panelElement = null;
 let statusElement = null;
 let totalElement = null;
 const countElements = new Map();
@@ -23,6 +24,7 @@ function ensureOverlay() {
   rootElement = document.createElement("div");
   rootElement.id = ROOT_ID;
   rootElement.style.setProperty("--pattern-url", `url("${chrome.runtime.getURL("assets/pattern.png")}")`);
+  rootElement.style.setProperty("--live-pattern-url", `url("${chrome.runtime.getURL("assets/live-pattern.png")}")`);
   rootElement.innerHTML = `
     <section id="${PANEL_ID}" aria-live="polite">
       <h1 class="apple-game-indicator-title">Apple Counter</h1>
@@ -53,6 +55,7 @@ function ensureOverlay() {
   `;
 
   document.documentElement.appendChild(rootElement);
+  panelElement = rootElement.querySelector(`#${PANEL_ID}`);
   statusElement = rootElement.querySelector(".apple-game-indicator-status");
   totalElement = rootElement.querySelector('[data-role="total"]');
 
@@ -73,6 +76,7 @@ function renderIndicator(payload) {
   lastRenderKey = renderKey;
 
   statusElement.textContent = status;
+  panelElement.classList.toggle("is-live", Boolean(state));
 
   if (!state) {
     totalElement.textContent = "-";
