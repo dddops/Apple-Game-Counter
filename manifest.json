@@ -11,9 +11,7 @@
     {
       "matches": [
         "https://www.gamesaien.com/game/fruit_box_a/*",
-        "https://www.gamesaien.com/game/fruit_box_a/",
-        "http://localhost/*",
-        "http://127.0.0.1/*"
+        "https://www.gamesaien.com/game/fruit_box_a/"
       ],
       "js": [
         "content-script.js"
@@ -33,9 +31,7 @@
         "assets/live-pattern.png"
       ],
       "matches": [
-        "https://www.gamesaien.com/*",
-        "http://localhost/*",
-        "http://127.0.0.1/*"
+        "https://www.gamesaien.com/*"
       ]
     }
   ]
