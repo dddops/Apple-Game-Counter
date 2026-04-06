@@ -8,6 +8,8 @@ const DIGIT_LAYOUT = [
   [4, 6],
   [5]
 ];
+const PANEL_GAP = 16;
+const VIEWPORT_MARGIN = 12;
 
 let rootElement = null;
 let panelElement = null;
@@ -16,6 +18,7 @@ let totalElement = null;
 const countElements = new Map();
 const compareElements = new Map();
 let lastRenderKey = "";
+let positionObserver = null;
 
 function ensureOverlay() {
   if (rootElement && document.contains(rootElement)) {
@@ -78,6 +81,67 @@ function ensureOverlay() {
       );
     }
   }
+
+  updateOverlayPosition();
+}
+
+function findGameAnchorElement() {
+  const canvases = Array.from(document.querySelectorAll("canvas"));
+  if (!canvases.length) {
+    return null;
+  }
+
+  return canvases
+    .map((canvas) => ({
+      canvas,
+      area: canvas.getBoundingClientRect().width * canvas.getBoundingClientRect().height
+    }))
+    .sort((a, b) => b.area - a.area)[0]?.canvas || null;
+}
+
+function updateOverlayPosition() {
+  ensureOverlay();
+
+  const anchor = findGameAnchorElement();
+  if (!anchor || !panelElement) {
+    rootElement.style.left = `${window.innerWidth - panelElement.offsetWidth - VIEWPORT_MARGIN}px`;
+    rootElement.style.top = `${VIEWPORT_MARGIN}px`;
+    return;
+  }
+
+  const anchorRect = anchor.getBoundingClientRect();
+  const panelWidth = panelElement.offsetWidth || 152;
+  const panelHeight = panelElement.offsetHeight || 0;
+
+  let left = anchorRect.right + PANEL_GAP;
+  if (left + panelWidth > window.innerWidth - VIEWPORT_MARGIN) {
+    left = Math.max(VIEWPORT_MARGIN, anchorRect.left - panelWidth - PANEL_GAP);
+  }
+
+  const maxTop = Math.max(VIEWPORT_MARGIN, window.innerHeight - panelHeight - VIEWPORT_MARGIN);
+  const top = Math.min(Math.max(VIEWPORT_MARGIN, anchorRect.top), maxTop);
+
+  rootElement.style.left = `${Math.round(left)}px`;
+  rootElement.style.top = `${Math.round(top)}px`;
+}
+
+function registerPositionTracking() {
+  if (positionObserver) {
+    return;
+  }
+
+  const onPositionChange = () => {
+    updateOverlayPosition();
+  };
+
+  window.addEventListener("resize", onPositionChange, { passive: true });
+  window.addEventListener("scroll", onPositionChange, { passive: true });
+
+  positionObserver = new MutationObserver(onPositionChange);
+  positionObserver.observe(document.documentElement, {
+    childList: true,
+    subtree: true
+  });
 }
 
 function renderIndicator(payload) {
@@ -93,6 +157,7 @@ function renderIndicator(payload) {
 
   statusElement.textContent = status;
   panelElement.classList.toggle("is-live", Boolean(state));
+  updateOverlayPosition();
 
   if (!state) {
     totalElement.textContent = "-";
@@ -158,6 +223,7 @@ function injectBridgeScript() {
 function startBoardWatcher() {
   ensureOverlay();
   renderIndicator({ status: "Loading" });
+  registerPositionTracking();
 
   window.addEventListener(BRIDGE_EVENT, (event) => {
     renderIndicator(event.detail);
